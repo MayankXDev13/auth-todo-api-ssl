@@ -35,7 +35,6 @@ export async function listUsers(
         name: users.name,
         email: users.email,
         role: users.role,
-        emailVerified: users.emailVerified,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       })
@@ -81,7 +80,6 @@ export async function getUser(req: Request, res: Response, next: NextFunction) {
         name: users.name,
         email: users.email,
         role: users.role,
-        emailVerified: users.emailVerified,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       })

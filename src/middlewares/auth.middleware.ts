@@ -42,7 +42,6 @@ export async function authenticate(
         email: users.email,
         name: users.name,
         role: users.role,
-        emailVerified: users.emailVerified,
       })
       .from(users)
       .where(eq(users.id, decoded.userId))
@@ -52,7 +51,7 @@ export async function authenticate(
     if (!user) {
       return res.status(401).json({ error: { message: "Invalid token" } });
     }
-
+    // @ts-ignore
     req.user = user;
     next();
   } catch (error) {

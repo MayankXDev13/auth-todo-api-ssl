@@ -18,7 +18,7 @@ export async function register(
         id: users.id,
         name: users.name,
         email: users.email,
-        emailVerified: users.emailVerified,
+
       })
       .from(users)
       .where(eq(users.email, email));
@@ -41,7 +41,7 @@ export async function register(
         id: users.id,
         name: users.name,
         email: users.email,
-        emailVerified: users.emailVerified,
+
       });
 
     res.status(201).json({ user: user });
@@ -75,7 +75,6 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         id: user.id,
         name: user.name,
         email: user.email,
-        emailVerified: user.emailVerified,
       },
       token,
     });
