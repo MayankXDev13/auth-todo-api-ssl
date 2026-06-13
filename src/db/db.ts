@@ -6,4 +6,4 @@ import * as schema from "./schema.js";
 config({ path: ".env" }); // or .env.local
 
 const sql = neon(process.env.DATABASE_URL!);
-export const db = drizzle({ client: sql, schema: schema });
+export const db = drizzle({ client: sql, schema: schema, logger: true });
