@@ -15,6 +15,13 @@
       "when": 1781330881380,
       "tag": "0001_supreme_serpent_society",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781334748160,
+      "tag": "0002_cuddly_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

@@ -52,6 +52,7 @@ export const todos = pgTable(
     status: statusEnum("status").notNull().default("pending"),
     priority: priorityEnum("priority").notNull().default("medium"),
     dueDate: timestamp("due_date"),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },
