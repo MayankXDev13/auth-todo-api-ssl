@@ -36,7 +36,7 @@ ENV NODE_ENV=production
 
 USER root
 
-RUN chown node:node /usr/src/app
+RUN chown -R node:node /usr/src/app
 
 USER node
 

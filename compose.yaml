@@ -2,6 +2,7 @@ services:
   auth-todo-api:
     image: mayankxdev/auth-todo-api:latest
     container_name: auth-todo-api
+    pull_policy: always
     env_file:
       - .env
     restart: unless-stopped
