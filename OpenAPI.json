@@ -1,0 +1,571 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Auth Todo API",
+    "version": "1.0.0",
+    "description": "A RESTful API providing JWT-based authentication, role-based access control (user / admin), and full CRUD for todos with pagination and search.",
+    "contact": { "name": "API Support" },
+    "license": { "name": "ISC" }
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Server health check" },
+    { "name": "Auth",   "description": "Register, login, and current-user endpoints" },
+    { "name": "Todos",  "description": "Todo CRUD (authenticated users)" },
+    { "name": "Users",  "description": "User management (admin only)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT obtained from POST /auth/login or POST /auth/register"
+      }
+    },
+    "schemas": {
+      "UUID": {
+        "type": "string",
+        "format": "uuid",
+        "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "example": "2026-06-13T06:00:00.000Z"
+      },
+      "Role": {
+        "type": "string",
+        "enum": ["user", "admin"],
+        "example": "user"
+      },
+      "TodoStatus": {
+        "type": "string",
+        "enum": ["pending", "completed"],
+        "example": "pending"
+      },
+      "TodoPriority": {
+        "type": "string",
+        "enum": ["high", "medium", "low"],
+        "example": "medium"
+      },
+      "Pagination": {
+        "type": "object",
+        "required": ["page", "limit", "total", "totalPages"],
+        "properties": {
+          "page":       { "type": "integer", "minimum": 1, "example": 1 },
+          "limit":      { "type": "integer", "minimum": 1, "maximum": 100, "example": 10 },
+          "total":      { "type": "integer", "example": 42 },
+          "totalPages": { "type": "integer", "example": 5 }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id":            { "$ref": "#/components/schemas/UUID" },
+          "name":          { "type": "string", "example": "Jane Doe" },
+          "email":         { "type": "string", "format": "email", "example": "jane@example.com" },
+          "role":          { "$ref": "#/components/schemas/Role" },
+          "emailVerified": { "type": "boolean", "example": false },
+          "createdAt":     { "$ref": "#/components/schemas/Timestamp" },
+          "updatedAt":     { "$ref": "#/components/schemas/Timestamp" }
+        }
+      },
+      "UserWithToken": {
+        "type": "object",
+        "required": ["user", "token"],
+        "properties": {
+          "user":  { "$ref": "#/components/schemas/User" },
+          "token": {
+            "type": "string",
+            "description": "Signed JWT — include as Authorization: Bearer <token>",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        }
+      },
+      "Todo": {
+        "type": "object",
+        "properties": {
+          "id":          { "$ref": "#/components/schemas/UUID" },
+          "userId":      { "$ref": "#/components/schemas/UUID" },
+          "title":       { "type": "string", "example": "Buy groceries" },
+          "description": { "type": ["string", "null"], "example": "Milk, eggs, bread" },
+          "status":      { "$ref": "#/components/schemas/TodoStatus" },
+          "priority":    { "$ref": "#/components/schemas/TodoPriority" },
+          "dueDate":     { "type": ["string", "null"], "format": "date-time", "example": "2026-06-20T18:00:00.000Z" },
+          "createdAt":   { "$ref": "#/components/schemas/Timestamp" },
+          "updatedAt":   { "$ref": "#/components/schemas/Timestamp" }
+        }
+      },
+      "ErrorBody": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["message"],
+            "properties": {
+              "message": { "type": "string", "example": "Something went wrong" }
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["message", "issues"],
+            "properties": {
+              "message": { "type": "string", "example": "Validation failed" },
+              "issues":  { "type": "object", "description": "Zod formatted error tree", "additionalProperties": true }
+            }
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["name", "email", "password"],
+        "properties": {
+          "name":     { "type": "string", "minLength": 3, "example": "Jane Doe" },
+          "email":    { "type": "string", "format": "email", "example": "jane@example.com" },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "description": "Must contain uppercase, lowercase, digit, and special char (@$!%*?&)",
+            "example": "Secret@123"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email":    { "type": "string", "format": "email", "example": "jane@example.com" },
+          "password": { "type": "string", "example": "Secret@123" }
+        }
+      },
+      "CreateTodoRequest": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title":       { "type": "string", "minLength": 1, "maxLength": 255, "example": "Buy groceries" },
+          "description": { "type": ["string", "null"], "maxLength": 1000, "example": "Milk, eggs, bread" },
+          "status":      { "$ref": "#/components/schemas/TodoStatus" },
+          "priority":    { "$ref": "#/components/schemas/TodoPriority" },
+          "dueDate":     { "type": ["string", "null"], "format": "date-time", "example": "2026-06-20T18:00:00.000Z" }
+        }
+      },
+      "UpdateTodoRequest": {
+        "type": "object",
+        "description": "All fields optional — send only what should change",
+        "properties": {
+          "title":       { "type": "string", "minLength": 1, "maxLength": 255, "example": "Buy groceries and cook" },
+          "description": { "type": ["string", "null"], "maxLength": 1000, "example": "Milk, eggs, bread, pasta" },
+          "status":      { "$ref": "#/components/schemas/TodoStatus" },
+          "priority":    { "$ref": "#/components/schemas/TodoPriority" },
+          "dueDate":     { "type": ["string", "null"], "format": "date-time", "example": "2026-06-21T18:00:00.000Z" }
+        }
+      }
+    },
+    "parameters": {
+      "PageParam": {
+        "name": "page", "in": "query",
+        "description": "Page number (1-based)",
+        "schema": { "type": "integer", "minimum": 1, "default": 1 }
+      },
+      "LimitParam": {
+        "name": "limit", "in": "query",
+        "description": "Items per page (max 100)",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 }
+      },
+      "ResourceId": {
+        "name": "id", "in": "path", "required": true,
+        "description": "Resource UUID",
+        "schema": { "$ref": "#/components/schemas/UUID" }
+      }
+    },
+    "responses": {
+      "400": {
+        "description": "Validation failed",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } }
+      },
+      "401": {
+        "description": "Unauthenticated",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorBody" },
+            "example": { "error": { "message": "No token provided" } }
+          }
+        }
+      },
+      "403": {
+        "description": "Forbidden — requires admin role",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorBody" },
+            "example": { "error": { "message": "Forbidden" } }
+          }
+        }
+      },
+      "404": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorBody" },
+            "example": { "error": { "message": "Resource not found" } }
+          }
+        }
+      },
+      "409": {
+        "description": "Conflict — duplicate email",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorBody" },
+            "example": { "error": { "message": "Email already exists" } }
+          }
+        }
+      },
+      "500": {
+        "description": "Internal server error",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" } } }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "description": "Returns 200 OK when the server is running.",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok":        { "type": "boolean", "example": true },
+                    "timestamp": { "$ref": "#/components/schemas/Timestamp" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new user",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "User created — returns user object and JWT",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserWithToken" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "409": { "$ref": "#/components/responses/409" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login with email and password",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated — returns user object and JWT",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserWithToken" } } }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorBody" },
+                "example": { "error": { "message": "Invalid credentials" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Get currently authenticated user",
+        "operationId": "me",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["user"],
+                  "properties": { "user": { "$ref": "#/components/schemas/User" } }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/401" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/todos": {
+      "get": {
+        "tags": ["Todos"],
+        "summary": "List todos (paginated)",
+        "description": "Returns the authenticated user's todos. Supports pagination and optional title search.",
+        "operationId": "listTodos",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          {
+            "name": "title", "in": "query",
+            "description": "Case-insensitive partial title search",
+            "schema": { "type": "string", "example": "grocery" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of todos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["todos", "pagination"],
+                  "properties": {
+                    "todos":      { "type": "array", "items": { "$ref": "#/components/schemas/Todo" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "post": {
+        "tags": ["Todos"],
+        "summary": "Create a todo",
+        "operationId": "createTodo",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTodoRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Todo created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["todo"],
+                  "properties": { "todo": { "$ref": "#/components/schemas/Todo" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/todos/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+      "get": {
+        "tags": ["Todos"],
+        "summary": "Get a single todo",
+        "operationId": "getTodo",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Todo found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["todo"],
+                  "properties": { "todo": { "$ref": "#/components/schemas/Todo" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "patch": {
+        "tags": ["Todos"],
+        "summary": "Update a todo (partial)",
+        "operationId": "updateTodo",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateTodoRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Todo updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["todo"],
+                  "properties": { "todo": { "$ref": "#/components/schemas/Todo" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "delete": {
+        "tags": ["Todos"],
+        "summary": "Delete a todo",
+        "operationId": "deleteTodo",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Todo deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string", "example": "Todo deleted successfully" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "List all users (admin only)",
+        "description": "Returns a paginated, optionally searchable list of all users. Requires admin role.",
+        "operationId": "listUsers",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          {
+            "name": "search", "in": "query",
+            "description": "Case-insensitive search on name or email",
+            "schema": { "type": "string", "example": "jane" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["users", "pagination"],
+                  "properties": {
+                    "users":      { "type": "array", "items": { "$ref": "#/components/schemas/User" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "$ref": "#/components/responses/403" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    },
+    "/users/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get user by ID (admin only)",
+        "operationId": "getUser",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "User found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["user"],
+                  "properties": { "user": { "$ref": "#/components/schemas/User" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "$ref": "#/components/responses/403" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      },
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Delete user by ID (admin only)",
+        "operationId": "deleteUser",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "User deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string", "example": "User deleted successfully" } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/400" },
+          "401": { "$ref": "#/components/responses/401" },
+          "403": { "$ref": "#/components/responses/403" },
+          "404": { "$ref": "#/components/responses/404" },
+          "500": { "$ref": "#/components/responses/500" }
+        }
+      }
+    }
+  }
+}
