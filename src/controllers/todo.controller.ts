@@ -89,6 +89,7 @@ export async function createTodo(
         status: status || "pending",
         priority: priority || "medium",
         dueDate: dueDate ? new Date(dueDate) : null,
+        createdAt: new Date()
       })
       .returning();
 
