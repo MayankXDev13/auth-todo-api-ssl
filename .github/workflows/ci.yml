@@ -26,5 +26,5 @@ jobs:
           context: .
           push: true
           tags: |
-            mayankxdev/github-actions-frontend-test:latest
-            mayankxdev/github-actions-frontend-test:${{ github.sha }}
+            mayankxdev/auth-todo-api:latest
+            mayankxdev/auth-todo-api:${{ github.sha }}

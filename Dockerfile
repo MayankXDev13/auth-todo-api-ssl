@@ -34,10 +34,15 @@ FROM base AS final
 
 ENV NODE_ENV=production
 
+USER root
+
+RUN chown node:node /usr/src/app
+
 USER node
 
-COPY package.json .
 
+COPY --chown=node:node package.json .
+COPY --chown=node:node pnpm-lock.yaml .
 COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/dist ./dist
 
