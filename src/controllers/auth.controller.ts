@@ -13,12 +13,17 @@ export async function register(
   try {
     const { name, email, password } = req.body as any;
 
-    const existingUser = await db
-      .select()
+    const [existingUser] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        emailVerified: users.emailVerified,
+      })
       .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-    if (existingUser.length > 0) {
+      .where(eq(users.email, email));
+
+    if (existingUser) {
       return res
         .status(400)
         .json({ error: { message: "User already exists" } });
@@ -32,13 +37,14 @@ export async function register(
         email,
         password: hashedPassword,
       })
-      .returning();
+      .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        emailVerified: users.emailVerified,
+      });
 
-    const token = signToken({ userId: user.id });
-
-    const { password: _, ...userWithoutPassword } = user;
-
-    res.status(201).json({ user: userWithoutPassword, token });
+    res.status(201).json({ user: user });
   } catch (error) {
     next(error);
   }
@@ -48,12 +54,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as any;
 
-    const userResult = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
-    const user = userResult[0];
+    const [user] = await db.select().from(users).where(eq(users.email, email));
 
     if (!user) {
       return res
@@ -69,9 +70,15 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     }
 
     const token = signToken({ userId: user.id });
-
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({ user: userWithoutPassword, token });
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        emailVerified: user.emailVerified,
+      },
+      token,
+    });
   } catch (error) {
     next(error);
   }
